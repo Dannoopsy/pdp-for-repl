@@ -69,7 +69,7 @@ int main () {
 	word w;
 	while (1) {							// работает до do_halt
 		w = w_read(pc);
-		printf("%06o %06o: ", pc, w);
+		trace("%06o %06o: ", pc, w);
 		pc = pc + 2;
 		i = 0;
 		while(1) {						// точно остановится на unknown
@@ -118,7 +118,7 @@ word w_read  (adr a) {
 		return w;
 	}
 	else {
-		trace("ERROR, adr = %c", a);
+		trace("ERROR, adr = %o", a);
 	}
 }
 void w_write (adr a, word val) {
@@ -127,7 +127,7 @@ void w_write (adr a, word val) {
 		mem [a + 1] = (byte) ( (val >> 8) );
 	}
 	else {
-		trace("ERROR, adr = %c", a);
+		trace("ERROR, adr = %o", a);
 	}
 }                                   
 	
