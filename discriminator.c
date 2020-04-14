@@ -1,6 +1,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
+
 
 #define memsize (64 * 1024) 
 
@@ -18,7 +20,12 @@ void b_write (adr a, byte val);  // пишет значение val в "стар
 word w_read  (adr a);            // читает из "старой памяти" mem слово с "адресом" a.
 void w_write (adr a, word val);  // пишет значение val в "старую память" mem в слово с "адресом" a.
 
-
+void trace (const char * format, ...) {
+	va_list ap;
+	va_start(ap, format);
+	vprintf(format, ap); 
+	va_end(ap);
+}
 
 
 word reg[8];
@@ -44,7 +51,7 @@ command cmd[] = {
 };
 
 void do_halt () {
-	printf("The end\n");
+	trace("The end\n");
 	exit(0);
 }
 
@@ -67,7 +74,7 @@ int main () {
 		i = 0;
 		while(1) {						// точно остановится на unknown
 			if((w & cmd[i].mask) == cmd[i].opcode) {
-				printf("%s\n", cmd[i].name);
+				trace("%s\n", cmd[i].name);
 				cmd[i].func();
 				break;	
 			}
@@ -110,11 +117,17 @@ word w_read  (adr a) {
 		w = w | mem[a];
 		return w;
 	}
+	else {
+		trace("ERROR, adr = %c", a);
+	}
 }
 void w_write (adr a, word val) {
 	if (a % 2 == 0) {
 		mem [a] = (byte)(val );
 		mem [a + 1] = (byte) ( (val >> 8) );
+	}
+	else {
+		trace("ERROR, adr = %c", a);
 	}
 }                                   
 	
