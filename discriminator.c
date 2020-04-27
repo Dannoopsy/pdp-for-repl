@@ -20,6 +20,7 @@ word reg[8];
 typedef struct {
 	word val;
 	word adress;
+	char isreg;		// работает в регистры 1 или в память 0
 } Arg;
 
 Arg ss, dd;
@@ -38,6 +39,10 @@ word w_read  (adr a);            // читает из "старой памяти
 void w_write (adr a, word val);  // пишет значение val в "старую память" mem в слово с "адресом" a.
 void trace (const char * format, ...);
 Arg get_mr (word w);
+void wm_write (adr a, word w, char isr);	// место записи зависит от моды 
+word wm_read (adr a, char isr);	
+void printreg ();		// печать всех регистров
+
 
 typedef struct {
 	word mask;
@@ -57,16 +62,20 @@ command cmd[] = {
 };
 
 void do_halt () {
-	printf("R0 = %o R1 = %o pc = %o\n", reg[0], reg[1], pc);
+	printreg();
 	trace("\nThe end\n");
 	exit(0);
 }
 
 void do_mov () {
-	reg[dd.adress] = ss.val;
+	wm_write (dd.adress, ss.val, dd.isreg);
+	
 }
+
 void do_add () {
-	reg[dd.adress] += reg[ss.adress];
+	wm_write(dd.adress, 
+	wm_read(dd.adress, dd.isreg) + wm_read(ss.adress, ss.isreg),
+	dd.isreg);
 }
 void do_nothing () {
 }
@@ -89,6 +98,7 @@ int main () {
 				if(cmd[i].isdd)
 					dd = get_mr(w);
 				cmd[i].func();
+				printreg();
 				break;	
 			}
 			i++;
@@ -139,6 +149,7 @@ word w_read  (adr a) {
 	}
 }
 void w_write (adr a, word val) {
+	
 	if (a % 2 == 0) {
 		mem [a] = (byte)(val );
 		mem [a + 1] = (byte) ( (val >> 8) );
@@ -146,7 +157,23 @@ void w_write (adr a, word val) {
 	else {
 		trace("ERROR w_write, adr = %o", a);
 	}
-}                                  
+}                               
+
+void wm_write (adr a, word w, char isr) {
+	if(isr) 
+		reg[a] = w;
+	else 
+		w_write(a, w);
+}
+word wm_read (adr a, char isr) {
+	if (isr) 
+		return reg[a];
+	else
+		return w_read(a);
+}
+		
+		
+	   
 
 void trace (const char * format, ...) {
 	va_list ap;
@@ -164,13 +191,16 @@ Arg get_mr (word w) {
 			res.adress = r;
 			res.val = reg[r];
 			trace("R%o ", r);
+			res.isreg = 1;
 			break;
 		case 1: 
+			res.isreg = 0;
 			res.adress = reg[r];
 			res.val = w_read(res.adress);
 			trace("(R%o) ", r);
 			break;
 		case 2: 
+			res.isreg = 0;
 			res.adress = reg[r];
 			res.val = w_read(res.adress);
 			reg [r] += 2;
@@ -186,6 +216,13 @@ Arg get_mr (word w) {
 	return res;
 }
 
-
+void printreg () {
+	int i = 0;
+	trace("\n");
+	for ( i = 0; i < 8; i ++) {
+		trace("R%o:%o ", i, reg[i]);
+	}
+	printf("\n");
+}
 
 
