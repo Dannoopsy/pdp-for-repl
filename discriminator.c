@@ -30,6 +30,7 @@ Arg ss, dd;
 void do_halt ();
 void do_mov ();
 void do_add ();
+void do_sob ();
 void do_nothing ();
 void load_file( );
 void mem_dump(adr start, word n);
@@ -58,7 +59,9 @@ command cmd[] = {
 	{0777777, 0000000, "halt", do_halt, 0, 0},
 	{0170000, 0010000, "mov", do_mov, 1, 1},
 	{0170000, 0060000, "add", do_add, 1, 1},
+	{0777000, 0077000, "sob", do_sob, 0, 0},
 	{0000000, 0000000, "unknown", do_nothing, 0, 0},
+	
 };
 
 void do_halt () {
@@ -66,6 +69,7 @@ void do_halt () {
 	trace("\nThe end\n");
 	exit(0);
 }
+
 
 void do_mov () {
 	wm_write (dd.adress, ss.val, dd.isreg);
@@ -77,6 +81,8 @@ void do_add () {
 	wm_read(dd.adress, dd.isreg) + wm_read(ss.adress, ss.isreg),
 	dd.isreg);
 }
+void do_sob () {
+}
 void do_nothing () {
 }
 
@@ -84,7 +90,9 @@ int main () {
 	pc = 01000;
 	int i = 0;
 	load_file();
+	load_file();
 	word w;
+	printreg();
 	while (1) {							// работает до do_halt
 		w = w_read(pc);
 		trace("\n%06o %06o: ", pc, w);
@@ -201,7 +209,7 @@ Arg get_mr (word w) {
 			break;
 		case 2: 
 			res.isreg = 0;
-			res.adress = reg[r];
+			res.adress = reg[r];			
 			res.val = w_read(res.adress);
 			reg [r] += 2;
 			if( r == 7) 
@@ -209,7 +217,14 @@ Arg get_mr (word w) {
 			else
 				trace("(R%o) ", r);
 			break;
-		default :
+		case 4:
+			res.isreg = 0;
+			reg[r] -= 2;
+			res.adress = reg[r];
+			res.val = w_read( res.adress);
+			trace("-(R%o) ", r);
+			break;
+		default:
 			fprintf(stderr, "Mode %o NOT IMPLEMENTED YET!", mode);
 			exit(1);
 	}
