@@ -25,12 +25,20 @@ typedef struct {
 
 Arg ss, dd;
 
+typedef struct { // отдельная структура под нн
+	word n;
+	byte r;
+} NN;
+NN nn;
+
+
 
 
 void do_halt ();
 void do_mov ();
 void do_add ();
 void do_sob ();
+void do_clr ();
 void do_nothing ();
 void load_file( );
 void mem_dump(adr start, word n);
@@ -40,6 +48,7 @@ word w_read  (adr a);            // читает из "старой памяти
 void w_write (adr a, word val);  // пишет значение val в "старую память" mem в слово с "адресом" a.
 void trace (const char * format, ...);
 Arg get_mr (word w);
+NN get_nn (word w);
 void wm_write (adr a, word w, char isr);	// место записи зависит от моды 
 word wm_read (adr a, char isr);	
 void printreg ();		// печать всех регистров
@@ -52,15 +61,17 @@ typedef struct {
 	void (* func) (void);
 	char isss;
 	char isdd;
+	char isnn;
 	
 }command;
 
 command cmd[] = {
-	{0777777, 0000000, "halt", do_halt, 0, 0},
-	{0170000, 0010000, "mov", do_mov, 1, 1},
-	{0170000, 0060000, "add", do_add, 1, 1},
-	{0777000, 0077000, "sob", do_sob, 0, 0},
-	{0000000, 0000000, "unknown", do_nothing, 0, 0},
+	{0777777, 0000000, "halt", do_halt, 0, 0, 0},
+	{0170000, 0010000, "mov", do_mov, 1, 1, 0},
+	{0170000, 0060000, "add", do_add, 1, 1, 0},
+	{0777000, 0077000, "sob", do_sob, 0, 0, 1},
+	{0777700, 0005000, "clr", do_clr, 0, 1, 0},
+	{0000000, 0000000, "unknown", do_nothing, 0, 0, 1},
 	
 };
 
@@ -70,18 +81,23 @@ void do_halt () {
 	exit(0);
 }
 
+void do_clr () {
+	wm_write(dd.adress, 0, dd.isreg);
+}
 
 void do_mov () {
-	wm_write (dd.adress, ss.val, dd.isreg);
+	wm_write (dd.adress, ss.val, dd.isreg); // функция знает, писать в регистры или в память
 	
 }
 
 void do_add () {
 	wm_write(dd.adress, 
 	wm_read(dd.adress, dd.isreg) + wm_read(ss.adress, ss.isreg),
-	dd.isreg);
+	dd.isreg); // функция знает, читать из регистров или из памяти
 }
 void do_sob () {
+	if(--reg[nn.r] != 0)
+		pc = pc - 2 * (nn.n);
 }
 void do_nothing () {
 }
@@ -101,10 +117,15 @@ int main () {
 		while(1) {						// точно остановится на unknown
 			if((w & cmd[i].mask) == cmd[i].opcode) {
 				trace("%s ", cmd[i].name);
-				if( cmd[i].isss) 
+				if( cmd[i].isss) { 
 					ss = get_mr(w >> 6);
-				if(cmd[i].isdd)
+				}
+				if(cmd[i].isdd) {
 					dd = get_mr(w);
+				}
+				if(cmd[i].isnn) {
+					nn = get_nn(w);
+				}
 				cmd[i].func();
 				printreg();
 				break;	
@@ -167,13 +188,13 @@ void w_write (adr a, word val) {
 	}
 }                               
 
-void wm_write (adr a, word w, char isr) {
+void wm_write (adr a, word w, char isr) { // выбирает, работать в регистры или в память
 	if(isr) 
 		reg[a] = w;
 	else 
 		w_write(a, w);
 }
-word wm_read (adr a, char isr) {
+word wm_read (adr a, char isr) { // выбирает, работать в регистры или в память
 	if (isr) 
 		return reg[a];
 	else
@@ -228,6 +249,12 @@ Arg get_mr (word w) {
 			fprintf(stderr, "Mode %o NOT IMPLEMENTED YET!", mode);
 			exit(1);
 	}
+	return res;
+}
+NN get_nn (word w) {
+	NN res;
+	res.n = w & 077;
+	res.r = (w >> 6) & 7;
 	return res;
 }
 
