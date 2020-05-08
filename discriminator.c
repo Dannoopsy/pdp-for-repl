@@ -249,38 +249,24 @@ Arg get_mr (word w) {
 		case 1: 
 			res.isreg = 0;
 			res.adress = reg[r];
-			switch (bait) {
-				case 0:
-					res.val = w_read(res.adress);
-					break;
-				case 1:
-					res.val = b_read(res.adress);
-					if((res.val >> 7) & 1) // если значение в байте было отрицательным
-						res.val += 0377 << 8;
-					break;
-				default:
-					trace("bait = %d what is it? A? bait is 0 or 1!\n", bait);
-					exit(1);
+			if (bait == 0) 
+				res.val = w_read(res.adress);
+			else {
+				res.val = b_read(res.adress);
+				if((res.val >> 7) & 1) // если значение в байте было отрицательным
+					res.val += 0377 << 8;
 			}
 			trace("(R%o) ", r);
 			break;
 		case 2: 
-			 switch (bait) {
-				case 0:
-					res.isreg = 0;
-						
-					res.adress = reg[r];			
-					res.val = w_read(res.adress);
-					reg [r] += 2;
-					if( r == 7) 
-						trace("#%o ", res.val);
-					else
-						trace("(R%o) ", r);
-					break;
-				case 1:
-					res.isreg = 0;
-					res.adress = reg[r];
-					res.val = b_read(res.adress);
+			 res.isreg = 0;
+			 res.adress = reg[r];
+			 if (bait == 0) {			
+				res.val = w_read(res.adress);
+				reg [r] += 2;
+			}	
+			else {		
+				res.val = b_read(res.adress);
 					if((res.val >> 7) & 1) // если значение в байте было отрицательным
 						res.val += 0377 << 8;
 					if (r < 6) {
@@ -289,12 +275,29 @@ Arg get_mr (word w) {
 					else {
 						reg [r] += 2;
 					}
-					break;
-				default:
-					trace("bait = %d what is it? A? bait is 0 or 1!\n", bait);
-					exit(1);
 			}
-			
+			if( r == 7) 
+						trace("#%o ", res.val);
+					else
+						trace("(R%o) ", r);
+			break;
+		case 3: 
+			res.isreg = 0;
+			if(bait == 0) {
+				res.adress = w_read(reg[r]);
+				res.val = w_read(res.adress);
+			}
+			else {
+				res.adress = b_read(reg[r]) ;
+				res.val = b_read(res.adress);
+				if((res.val >> 7) & 1) // если значение в байте было отрицательным
+						res.val += 0377 << 8;
+			}
+			reg[r] += 2;
+			if (r != 7) 
+				trace("@(R%o)+ ", r);
+			else 
+				trace("@#%o ", res.adress);
 			break;
 		case 4:
 			res.isreg = 0;
