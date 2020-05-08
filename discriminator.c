@@ -10,6 +10,8 @@ typedef unsigned char byte;
 typedef unsigned short int word;
 typedef word adr;
 
+char bait; // для байтовой или словесной операции мы сейчас работаем
+
 byte mem[memsize];
 word reg[8];
 #define pc reg[7]
@@ -21,6 +23,7 @@ typedef struct {
 	word val;
 	word adress;
 	char isreg;		// работает в регистры 1 или в память 0
+	
 } Arg;
 
 Arg ss, dd;
@@ -39,6 +42,7 @@ void do_mov ();
 void do_add ();
 void do_sob ();
 void do_clr ();
+void do_movb (); // байтовая функция
 void do_nothing ();
 void load_file( );
 void mem_dump(adr start, word n);
@@ -49,6 +53,7 @@ void w_write (adr a, word val);  // пишет значение val в "стар
 void trace (const char * format, ...);
 Arg get_mr (word w);
 NN get_nn (word w);
+void bm_write(adr a, word w, char isr);
 void wm_write (adr a, word w, char isr);	// место записи зависит от моды 
 word wm_read (adr a, char isr);	
 void printreg ();		// печать всех регистров
@@ -59,19 +64,22 @@ typedef struct {
 	word opcode;
 	char * name;
 	void (* func) (void);
+	char isbait; // байтовая ли операция
 	char isss;
 	char isdd;
 	char isnn;
 	
+	
 }command;
 
 command cmd[] = {
-	{0777777, 0000000, "halt", do_halt, 0, 0, 0},
-	{0170000, 0010000, "mov", do_mov, 1, 1, 0},
-	{0170000, 0060000, "add", do_add, 1, 1, 0},
-	{0777000, 0077000, "sob", do_sob, 0, 0, 1},
-	{0777700, 0005000, "clr", do_clr, 0, 1, 0},
-	{0000000, 0000000, "unknown", do_nothing, 0, 0, 1},
+	{0777777, 0000000, "halt", do_halt, 0, 0, 0, 0},
+	{0170000, 0010000, "mov", do_mov, 0, 1, 1, 0},
+	{0170000, 0060000, "add", do_add, 0, 1, 1, 0},
+	{0777000, 0077000, "sob", do_sob, 0, 0, 0, 1},
+	{0777700, 0005000, "clr", do_clr, 0, 0, 1, 0},
+	{0170000, 0110000, "movb", do_movb, 1, 1, 1, 0},
+	{0000000, 0000000, "unknown", do_nothing, 0, 0, 0, 0},
 	
 };
 
@@ -88,6 +96,10 @@ void do_clr () {
 void do_mov () {
 	wm_write (dd.adress, ss.val, dd.isreg); // функция знает, писать в регистры или в память
 	
+}
+
+void do_movb () {
+	bm_write(dd.adress, ss.val, dd.isreg);
 }
 
 void do_add () {
@@ -110,6 +122,9 @@ int main () {
 	word w;
 	printreg();
 	while (1) {							// работает до do_halt
+		if (pc % 2) { 
+			trace ("pc = %o HOW?\n", pc);
+		}
 		w = w_read(pc);
 		trace("\n%06o %06o: ", pc, w);
 		pc = pc + 2;
@@ -117,6 +132,7 @@ int main () {
 		while(1) {						// точно остановится на unknown
 			if((w & cmd[i].mask) == cmd[i].opcode) {
 				trace("%s ", cmd[i].name);
+				bait = cmd[i].isbait;
 				if( cmd[i].isss) { 
 					ss = get_mr(w >> 6);
 				}
@@ -174,7 +190,7 @@ word w_read  (adr a) {
 		return w;
 	}
 	else {
-		trace("ERROR w_read, adr = %o", a);
+		trace("ERROR w_read, adr = %o\n", a);
 	}
 }
 void w_write (adr a, word val) {
@@ -184,7 +200,7 @@ void w_write (adr a, word val) {
 		mem [a + 1] = (byte) ( (val >> 8) );
 	}
 	else {
-		trace("ERROR w_write, adr = %o", a);
+		trace("ERROR w_write, adr = %o\n", a);
 	}
 }                               
 
@@ -194,6 +210,14 @@ void wm_write (adr a, word w, char isr) { // выбирает, работать 
 	else 
 		w_write(a, w);
 }
+void bm_write(adr a, word w, char isr) {
+	if(isr) 
+		reg[a] = w;
+	else 
+		b_write(a, w);
+	
+}
+
 word wm_read (adr a, char isr) { // выбирает, работать в регистры или в память
 	if (isr) 
 		return reg[a];
@@ -225,18 +249,52 @@ Arg get_mr (word w) {
 		case 1: 
 			res.isreg = 0;
 			res.adress = reg[r];
-			res.val = w_read(res.adress);
+			switch (bait) {
+				case 0:
+					res.val = w_read(res.adress);
+					break;
+				case 1:
+					res.val = b_read(res.adress);
+					if((res.val >> 7) & 1) // если значение в байте было отрицательным
+						res.val += 0377 << 8;
+					break;
+				default:
+					trace("bait = %d what is it? A? bait is 0 or 1!\n", bait);
+					exit(1);
+			}
 			trace("(R%o) ", r);
 			break;
 		case 2: 
-			res.isreg = 0;
-			res.adress = reg[r];			
-			res.val = w_read(res.adress);
-			reg [r] += 2;
-			if( r == 7) 
-				trace("#%o ", res.val);
-			else
-				trace("(R%o) ", r);
+			 switch (bait) {
+				case 0:
+					res.isreg = 0;
+						
+					res.adress = reg[r];			
+					res.val = w_read(res.adress);
+					reg [r] += 2;
+					if( r == 7) 
+						trace("#%o ", res.val);
+					else
+						trace("(R%o) ", r);
+					break;
+				case 1:
+					res.isreg = 0;
+					res.adress = reg[r];
+					res.val = b_read(res.adress);
+					if((res.val >> 7) & 1) // если значение в байте было отрицательным
+						res.val += 0377 << 8;
+					if (r < 6) {
+						reg [r] += 1;
+					}
+					else {
+						reg [r] += 2;
+					}
+					break;
+				default:
+					trace("bait = %d what is it? A? bait is 0 or 1!\n", bait);
+					exit(1);
+			}
+			
 			break;
 		case 4:
 			res.isreg = 0;
