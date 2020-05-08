@@ -118,7 +118,7 @@ int main () {
 	pc = 01000;
 	int i = 0;
 	load_file();
-	load_file();
+	//load_file();
 	word w;
 	printreg();
 	while (1) {							// работает до do_halt
@@ -239,6 +239,7 @@ Arg get_mr (word w) {
 	Arg res;
 	int r = w & 7;
 	int mode = (w >> 3) & 7;
+	trace ("mode = %o, r = %o\n", mode, r); // отладка!!!
 	switch (mode) {
 		case 0: 
 			res.adress = r;
@@ -301,9 +302,19 @@ Arg get_mr (word w) {
 			break;
 		case 4:
 			res.isreg = 0;
-			reg[r] -= 2;
-			res.adress = reg[r];
-			res.val = w_read( res.adress);
+			if (bait == 0) {
+				reg[r] -= 2;
+				res.adress = reg[r];
+				res.val = w_read(res.adress);
+			}
+			else {
+				if(r < 6) 
+					reg[r] --;
+				else 
+					reg[r] -= 2;
+				res.adress = reg[r];
+				res.val = b_read(res.adress);
+			}	
 			trace("-(R%o) ", r);
 			break;
 		default:
