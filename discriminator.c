@@ -15,9 +15,7 @@ char bait; // для байтовой или словесной операции
 byte mem[memsize];
 word reg[8];
 #define pc reg[7]
-
-
-
+char psw;
 
 typedef struct {
 	word val;
@@ -34,6 +32,7 @@ typedef struct { // отдельная структура под нн
 } NN;
 NN nn;
 
+word xx;
 
 
 
@@ -43,8 +42,14 @@ void do_add ();
 void do_sob ();
 void do_clr ();
 void do_movb (); // байтовая функция
+void do_br ();
+void do_beq ();
 void do_nothing ();
 void load_file( );
+void set_N (word w);
+void set_Z (word w);
+void set_V (word w);
+void set_C (unsigned long int x); 
 void mem_dump(adr start, word n);
 byte b_read  (adr a);            // читает из "старой памяти" mem байт с "адресом" a.
 void b_write (adr a, byte val);  // пишет значение val в "старую память" mem в байт с "адресом" a.
@@ -53,6 +58,7 @@ void w_write (adr a, word val);  // пишет значение val в "стар
 void trace (const char * format, ...);
 Arg get_mr (word w);
 NN get_nn (word w);
+word get_xx (word w);
 void bm_write(adr a, word w, char isr);
 void wm_write (adr a, word w, char isr);	// место записи зависит от моды 
 word wm_read (adr a, char isr);	
@@ -68,18 +74,20 @@ typedef struct {
 	char isss;
 	char isdd;
 	char isnn;
-	
+	char isxxx;
 	
 }command;
 
 command cmd[] = {
-	{0777777, 0000000, "halt", do_halt, 0, 0, 0, 0},
-	{0170000, 0010000, "mov", do_mov, 0, 1, 1, 0},
-	{0170000, 0060000, "add", do_add, 0, 1, 1, 0},
-	{0777000, 0077000, "sob", do_sob, 0, 0, 0, 1},
-	{0777700, 0005000, "clr", do_clr, 0, 0, 1, 0},
-	{0170000, 0110000, "movb", do_movb, 1, 1, 1, 0},
-	{0000000, 0000000, "unknown", do_nothing, 0, 0, 0, 0},
+	{0177777, 0000000, "halt", do_halt, 0, 0, 0, 0, 0},
+	{0170000, 0010000, "mov", do_mov, 0, 1, 1, 0, 0},
+	{0170000, 0060000, "add", do_add, 0, 1, 1, 0, 0},
+	{0177000, 0077000, "sob", do_sob, 0, 0, 0, 1, 0},
+	{0177700, 0005000, "clr", do_clr, 0, 0, 1, 0, 0},
+	{0170000, 0110000, "movb", do_movb, 1, 1, 1, 0, 0},
+	{0177400, 0000400, "br", do_br, 0, 0, 0, 0, 1},
+	{0177400, 0001400, "beq", do_beq, 0, 0, 0, 0, 1},
+	{0000000, 0000000, "unknown", do_nothing, 0, 0, 0, 0, 0},
 	
 };
 
@@ -92,20 +100,36 @@ void do_halt () {
 void do_clr () {
 	wm_write(dd.adress, 0, dd.isreg);
 }
-
+void do_br () {
+	pc = pc + xx*2;
+}
+void do_beq () {
+	if ( (psw & 04)) 
+		do_br();
+}
 void do_mov () {
 	wm_write (dd.adress, ss.val, dd.isreg); // функция знает, писать в регистры или в память
-	
+	set_N(ss.val);
+	set_Z(ss.val);
 }
 
 void do_movb () {
 	bm_write(dd.adress, ss.val, dd.isreg);
+	set_N (ss.val);
+	set_Z(ss.val);
 }
 
 void do_add () {
-	wm_write(dd.adress, 
-	wm_read(dd.adress, dd.isreg) + wm_read(ss.adress, ss.isreg),
-	dd.isreg); // функция знает, читать из регистров или из памяти
+	word w1 = wm_read(dd.adress, dd.isreg); // функция знает, читать из регистров или из памяти
+	word w2 = wm_read(ss.adress, ss.isreg);
+	wm_write(dd.adress, w1 + w2, dd.isreg); 
+	unsigned long int x1 = 0;
+	unsigned long int x2 = 0;
+	x1 = x1 & w1;
+	x2 = x2 & w2;
+	set_N (w1 + w2);
+	set_C (x1 + x2);
+	set_Z (w1 + w2);
 }
 void do_sob () {
 	if(--reg[nn.r] != 0)
@@ -118,7 +142,7 @@ int main () {
 	pc = 01000;
 	int i = 0;
 	load_file();
-	//load_file();
+	load_file();
 	word w;
 	printreg();
 	while (1) {							// работает до do_halt
@@ -141,6 +165,9 @@ int main () {
 				}
 				if(cmd[i].isnn) {
 					nn = get_nn(w);
+				}
+				if(cmd[i].isxxx) {
+					xx = get_xx(w);
 				}
 				cmd[i].func();
 				printreg();
@@ -239,7 +266,7 @@ Arg get_mr (word w) {
 	Arg res;
 	int r = w & 7;
 	int mode = (w >> 3) & 7;
-	trace ("mode = %o, r = %o\n", mode, r); // отладка!!!
+	//trace ("mode = %o, r = %o\n", mode, r); // отладка!!!
 	switch (mode) {
 		case 0: 
 			res.adress = r;
@@ -329,14 +356,65 @@ NN get_nn (word w) {
 	res.r = (w >> 6) & 7;
 	return res;
 }
-
+void set_N (word w) { // устанавливает эн по левому биту слова/байта
+	if (bait == 0) {
+		if((w >> 15))
+			psw = psw | 010;
+		else 
+			psw = psw & 07;
+	}
+	else {
+		if ((w >> 7)) 
+			psw = psw | 010;
+		else 
+			psw = psw & 07;
+	}
+}
+void set_Z (word w) { // устанавливает зет по слову/байту
+	if (bait == 0) {
+		if(w)
+			psw = psw & 013;
+		else 
+			psw = psw | 04;
+		}
+	else {
+		if((w & 0377))
+			psw = psw & 013;
+		else 
+			psw = psw | 04;
+		}
+}
+void set_C (unsigned long int x) {
+	if (bait == 0) {
+		if (((x >> 16) & 1)) 
+			psw = psw | 1;
+		else 
+			psw = psw & 0;
+	}
+	else {
+		if (((x >> 8) & 1)) 
+			psw = psw | 1;
+		else 
+			psw = psw & 0;
+	}
+	
+}
+word get_xx (word w) {
+	if ((w & 0200)) {
+		//trace ("xx = %o\n", ( * ((~(w - 1)) & 0377));
+		return  (w & 0377) - 0400; 
+	}
+	else
+		return  (w & 0177);
+}
+		
 void printreg () {
 	int i = 0;
 	trace("\n");
 	for ( i = 0; i < 8; i ++) {
 		trace("R%o:%o ", i, reg[i]);
 	}
-	printf("\n");
+	trace("\n");
 }
 
 
