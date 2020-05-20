@@ -11,8 +11,11 @@ typedef unsigned short int word;
 typedef word adr;
 
 char bait; // для байтовой или словесной операции мы сейчас работаем
-
+char isload; // грузим/не грузим программу
 byte mem[memsize];
+#define ostat 0177564
+#define odata 0177566
+
 word reg[8];
 #define pc reg[7]
 char psw;
@@ -43,7 +46,10 @@ void do_sob ();
 void do_clr ();
 void do_movb (); // байтовая функция
 void do_br ();
+void do_bpl ();
 void do_beq ();
+void do_tst ();
+void do_tstb(); // байтовая функция
 void do_nothing ();
 void load_file( );
 void set_N (word w);
@@ -62,6 +68,8 @@ word get_xx (word w);
 void bm_write(adr a, word w, char isr);
 void wm_write (adr a, word w, char isr);	// место записи зависит от моды 
 word wm_read (adr a, char isr);	
+byte bm_read (adr a, char isr); // чтение из регистра и возвращение байта рисковая операция
+								//но она и не планируется, а функция для единообразия
 void printreg ();		// печать всех регистров
 
 
@@ -87,12 +95,16 @@ command cmd[] = {
 	{0170000, 0110000, "movb", do_movb, 1, 1, 1, 0, 0},
 	{0177400, 0000400, "br", do_br, 0, 0, 0, 0, 1},
 	{0177400, 0001400, "beq", do_beq, 0, 0, 0, 0, 1},
+	{0177400, 0100000, "bpl", do_bpl, 0, 0, 0, 0, 1},
+	{0177700, 0005700, "tst", do_tst, 0, 0, 1, 0, 0},
+	{0177700, 0105700, "tstb", do_tstb, 1, 0, 1, 0, 0},
 	{0000000, 0000000, "unknown", do_nothing, 0, 0, 0, 0, 0},
 	
 };
 
 void do_halt () {
 	printreg();
+	//trace ("\n%o\n\n", odata);
 	trace("\nThe end\n");
 	exit(0);
 }
@@ -106,6 +118,22 @@ void do_br () {
 void do_beq () {
 	if ( (psw & 04)) 
 		do_br();
+}
+void do_bpl () {
+	//trace ("\n\n%o\n", (psw & 010));
+	if ( (psw & 010) == 0) 
+		do_br();
+}
+void do_tst () {
+	word q = wm_read(dd.adress, dd.isreg);
+	set_N (q);
+	set_Z (q);
+}
+void do_tstb () {
+	//word q = (word)bm_read(dd.adress, dd.isreg);
+	//trace("\n%o\n", dd.val);
+	set_N (dd.val);
+	set_Z (dd.val);
 }
 void do_mov () {
 	wm_write (dd.adress, ss.val, dd.isreg); // функция знает, писать в регистры или в память
@@ -139,10 +167,11 @@ void do_nothing () {
 }
 
 int main () {
+	b_write (ostat, -1);  //всегда готов
 	pc = 01000;
 	int i = 0;
-	load_file();
-	load_file();
+	while (!isload) 
+		load_file();
 	word w;
 	printreg();
 	while (1) {							// работает до do_halt
@@ -176,6 +205,9 @@ int main () {
 			i++;
 		}
 	}
+	// сюда программа не должна заходить
+	trace("ERROR ERROR ERROR КРИК УМИРАЮЩЕГО ДЕЛЬФИНА ERROR");
+	
 	
 	
 	
@@ -196,11 +228,15 @@ void load_file( ) {
 	int a;
 	int n, i;
 	int b;
-	scanf ("%x%x", &a, &n);
-	for (i = 0; i < n; i ++) {
-		scanf("%x", &b);
-		b_write((adr)(a + i), (byte)b);
+	if (scanf ("%x%x", &a, &n) != 2) {
+		isload = 1;
 	}
+	else {
+		for (i = 0; i < n; i ++) {
+			scanf("%x", &b);
+			b_write((adr)(a + i), (byte)b);
+		}
+}
 }
 byte b_read  (adr a) {
 	return mem[a];
@@ -208,6 +244,8 @@ byte b_read  (adr a) {
 
 void b_write (adr a, byte val) {
 	mem[a] = val;
+	if(a == odata) 
+		printf("%c", val);
 }
 
 word w_read  (adr a) {
@@ -221,7 +259,8 @@ word w_read  (adr a) {
 	}
 }
 void w_write (adr a, word val) {
-	
+	if(a == odata) 
+		printf("%c", val);
 	if (a % 2 == 0) {
 		mem [a] = (byte)(val );
 		mem [a + 1] = (byte) ( (val >> 8) );
@@ -251,15 +290,23 @@ word wm_read (adr a, char isr) { // выбирает, работать в рег
 	else
 		return w_read(a);
 }
-		
+
+byte bm_read (adr a, char isr) {
+	if (isr) 
+		return reg[a];
+	else
+		return b_read(a);
+}
 		
 	   
 
 void trace (const char * format, ...) {
-	va_list ap;
-	va_start(ap, format);
-	vprintf(format, ap); 
-	va_end(ap);
+	if (0) {
+		va_list ap;
+		va_start(ap, format);
+		vprintf(format, ap); 
+		va_end(ap);
+	}
 }
 
 Arg get_mr (word w) {
@@ -316,7 +363,7 @@ Arg get_mr (word w) {
 				res.val = w_read(res.adress);
 			}
 			else {
-				res.adress = b_read(reg[r]) ;
+				res.adress = w_read(reg[r]) ;
 				res.val = b_read(res.adress);
 				if((res.val >> 7) & 1) // если значение в байте было отрицательным
 						res.val += 0377 << 8;
@@ -363,7 +410,7 @@ void set_N (word w) { // устанавливает эн по левому би�
 		else 
 			psw = psw & 07;
 	}
-	else {
+	else { 
 		if ((w >> 7)) 
 			psw = psw | 010;
 		else 
